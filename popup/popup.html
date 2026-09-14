@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>cite-log</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header class="popup-header">
+      <div class="brand">
+        <img src="../icons/icon-48.png" alt="cite-log" class="brand-icon">
+        <div class="brand-text">
+          <h1>cite-log</h1>
+          <span>스마트 문장 및 인용 수집기</span>
+        </div>
+      </div>
+      <span class="count-badge" id="total-badge">0개</span>
+    </header>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-citations">0</div>
+        <div class="stat-label">수집한 문장</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-projects">0</div>
+        <div class="stat-label">프로젝트</div>
+      </div>
+    </div>
+
+    <div class="action-section">
+      <button class="btn btn-primary" id="btn-open-dashboard">
+        <span>🎨 대시보드 & 콜라주 생성기 열기</span>
+      </button>
+    </div>
+
+    <div class="recent-section">
+      <div class="section-title">
+        <span>최근 수집한 문장</span>
+        <span class="sub" id="recent-count">최신순</span>
+      </div>
+      <div class="recent-list" id="recent-list">
+        <div class="empty-state">
+          웹페이지에서 텍스트를 드래그하고<br><b>마우스 우클릭 > cite-log</b>를 눌러보세요!
+        </div>
+      </div>
+    </div>
+
+    <footer class="popup-footer">
+      <button class="footer-link" id="btn-options">⚙️ 설정</button>
+      <span class="version">v1.0.0</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
