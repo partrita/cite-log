@@ -1,0 +1,72 @@
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag name (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set Version Variable
+        id: vars
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+          fi
+          # Strip leading 'v' for manifest version (e.g., v1.0.0 -> 1.0.0)
+          CLEAN_VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${CLEAN_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Sync version in manifest.json
+        run: |
+          sed -i 's/"version": "[^"]*"/"version": "${{ steps.vars.outputs.version }}"/' manifest.json
+          cat manifest.json | grep '"version"'
+
+      - name: Package Extension ZIP
+        run: |
+          ZIP_NAME="cite-log-${{ steps.vars.outputs.tag }}.zip"
+          zip -r "$ZIP_NAME" \
+            manifest.json \
+            background.js \
+            content.js \
+            content.css \
+            icons \
+            popup \
+            dashboard \
+            README.md \
+            LICENSE \
+            -x "*.DS_Store" "*__pycache__*" "*.git*"
+
+          sha256sum "$ZIP_NAME" > "${ZIP_NAME}.sha256"
+          ls -lh "$ZIP_NAME" "${ZIP_NAME}.sha256"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: "cite-log ${{ steps.vars.outputs.tag }}"
+          files: |
+            cite-log-${{ steps.vars.outputs.tag }}.zip
+            cite-log-${{ steps.vars.outputs.tag }}.zip.sha256
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

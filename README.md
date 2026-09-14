@@ -116,6 +116,23 @@ cite-log/
 
 ---
 
+## 🏷️ GitHub Actions 자동 릴리스 (Release)
+
+Git 태그를 푸시하면 GitHub Actions가 자동으로 확장 프로그램 배포용 ZIP 파일과 SHA-256 체크섬을 생성하여 GitHub Release에 등록합니다:
+
+```bash
+# 새로운 버전 태그 생성 (예: v1.0.0)
+git tag v1.0.0
+
+# 원격 저장소로 태그 푸시
+git push origin v1.0.0
+```
+
+- 트리거 시 `cite-log-v1.0.0.zip` 파일이 자동 빌드되어 Release 에셋으로 첨부됩니다.
+- GitHub 저장소의 Actions 탭에서 **'Workflow dispatch'**를 통해 수동으로 태그를 지정하여 릴리스를 생성할 수도 있습니다.
+
+---
+
 ## 🔒 개인정보 및 보안
 - cite-log는 사용자의 어떠한 데이터도 외부 서버로 전송하지 않습니다.
 - 모든 인용구, 메모, 방문 기록은 사용자의 컴퓨터 브라우저 로컬 저장소(`chrome.storage.local`)와 지정된 로컬 폴더에만 안전하게 보관됩니다.
