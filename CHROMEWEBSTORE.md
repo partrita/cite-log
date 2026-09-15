@@ -59,6 +59,7 @@ Korean
 | `activeTab` | permissions | 사용자가 컨텍스트 메뉴를 클릭한 현재 활성 탭에 인용 입력 팝업 UI를 띄우기 위해 필요합니다. |
 | `scripting` | permissions | 컨텍스트 메뉴 클릭 시 현재 페이지에 모달 입력 UI 스크립트를 주입하고 실행하기 위해 필요합니다. |
 | `tabs` | permissions | 인용 대상 웹페이지의 제목(Title)과 URL을 수집 메타데이터로 정확히 추출하기 위해 필요합니다. |
+| `unlimitedStorage` | permissions | 대용량 인용 데이터베이스(IndexedDB)를 브라우저 용량 제한 없이 안정적으로 영구 보관하기 위해 필요합니다. |
 
 ## Privacy & Data Use
 
@@ -66,7 +67,7 @@ Korean
 
 **Does the extension collect user data?** No
 
-수집된 모든 텍스트, URL 및 사용자 메모는 사용자의 로컬 브라우저 저장소(chrome.storage.local)와 로컬 디스크 파일로만 저장되며, 어떠한 원격 서버나 제3자에게도 전송되지 않습니다.
+수집된 모든 텍스트, URL 및 사용자 메모는 사용자의 로컬 브라우저 저장소(IndexedDB / chrome.storage.local)와 로컬 디스크 파일로만 저장되며, 어떠한 원격 서버나 제3자에게도 전송되지 않습니다.
 
 ### Data Use Certification
 - [x] Data is NOT sold to third parties
@@ -77,4 +78,5 @@ Korean
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
+| 1.0.1 | 2026-09-15 | 대용량 데이터 성능 최적화 (IndexedDB 전환, 일간 누적 모드, 무한 스크롤, 인덱싱) | Ready |
 | 1.0.0 | 2026-09-14 | 최초 릴리스 (우클릭 수집, 로컬 저장, 메타데이터 자동 추출, 콜라주 생성기) | Ready |

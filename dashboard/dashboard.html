@@ -87,6 +87,10 @@
           <!-- Populated dynamically -->
         </div>
 
+        <div id="infinite-scroll-sentinel" style="text-align: center; color: #94a3b8; padding: 16px; font-size: 12px; display: none;">
+          더 많은 인용구를 불러오는 중...
+        </div>
+
         <!-- Empty State -->
         <div class="empty-placeholder" id="empty-state" style="display: none;">
           <div class="placeholder-icon">🔖</div>
@@ -157,6 +161,15 @@
               </select>
             </div>
 
+            <div class="form-group">
+              <label for="setting-storage-mode">파일 저장 방식 (최적화 옵션)</label>
+              <select id="setting-storage-mode" class="form-select">
+                <option value="individual">개별 파일 저장 (cite-log/YYYYMMDD_제목.md)</option>
+                <option value="daily">일간 누적 저장 (cite-log/YYYY-MM-DD.md - 하루의 모든 인용구를 데일리 노트 1개에 누적, 파일 수 95% 감소)</option>
+                <option value="project">프로젝트별 폴더 분기 (cite-log/[프로젝트명]/YYYYMMDD_제목.md)</option>
+              </select>
+            </div>
+
             <div class="form-group-checkbox">
               <label class="checkbox-label">
                 <input type="checkbox" id="setting-auto-download" checked />
@@ -191,6 +204,7 @@
 
   <div id="toast" class="dashboard-toast"></div>
 
+  <script src="../db.js"></script>
   <script src="dashboard.js"></script>
 </body>
 </html>

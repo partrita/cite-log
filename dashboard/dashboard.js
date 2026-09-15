@@ -1,8 +1,9 @@
-// cite-log - Dashboard & Collage Studio Logic
+// cite-log - Dashboard & Collage Studio Logic (High-Performance Edition)
 
 document.addEventListener("DOMContentLoaded", async () => {
   // Application State
-  let citations = [];
+  let allCitations = [];
+  let filteredCitations = [];
   const selectedIds = new Set();
   const filterState = {
     search: "",
@@ -12,8 +13,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   let currentSettings = {
     saveDirectory: "cite-log",
     fileFormat: "md",
-    autoDownload: true
+    autoDownload: true,
+    storageMode: "individual"
   };
+
+  // Pagination & Virtualization constants
+  const PAGE_SIZE = 24;
+  let currentlyRenderedCount = 0;
+
+  // Cached indexes for O(1) instant filtering
+  let projectIndex = new Map();
+  let tagIndex = new Map();
 
   // DOM Elements
   const libraryPane = document.getElementById("pane-library");
@@ -22,6 +32,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const navButtons = document.querySelectorAll(".nav-item");
 
   const citationsContainer = document.getElementById("citations-container");
+  const scrollSentinel = document.getElementById("infinite-scroll-sentinel");
   const emptyState = document.getElementById("empty-state");
   const searchInput = document.getElementById("search-input");
   const btnClearSearch = document.getElementById("btn-clear-search");
@@ -53,6 +64,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const settingSaveDir = document.getElementById("setting-save-dir");
   const settingFormat = document.getElementById("setting-format");
   const settingAutoDownload = document.getElementById("setting-auto-download");
+  const settingStorageMode = document.getElementById("setting-storage-mode");
   const btnSaveSettings = document.getElementById("btn-save-settings");
   const btnBackupExport = document.getElementById("btn-backup-export");
   const inputBackupFile = document.getElementById("input-backup-file");
@@ -60,6 +72,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // 1. Initialize
   await loadData();
+  setupInfiniteScroll();
   handleHashNavigation();
 
   window.addEventListener("hashchange", handleHashNavigation);
@@ -75,7 +88,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // Switch Tab
   function switchTab(tabId) {
     navButtons.forEach(btn => {
       btn.classList.toggle("active", btn.dataset.tab === tabId);
@@ -98,108 +110,112 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   });
 
-  // 2. Load Data from Chrome Storage
+  // 2. Load Data from IndexedDB & Settings
   async function loadData() {
-    const data = await chrome.storage.local.get([
-      "citations",
+    // Check & migrate legacy storage if needed
+    await migrateFromStorageIfNeeded();
+
+    // Load from IndexedDB
+    allCitations = await dbGetAllCitations();
+
+    // Load settings from chrome.storage.local
+    const storedSettings = await chrome.storage.local.get([
       "saveDirectory",
       "fileFormat",
-      "autoDownload"
+      "autoDownload",
+      "storageMode"
     ]);
 
-    citations = data.citations || [];
     currentSettings = {
-      saveDirectory: data.saveDirectory || "cite-log",
-      fileFormat: data.fileFormat || "md",
-      autoDownload: data.autoDownload !== undefined ? data.autoDownload : true
+      saveDirectory: storedSettings.saveDirectory || "cite-log",
+      fileFormat: storedSettings.fileFormat || "md",
+      autoDownload: storedSettings.autoDownload !== undefined ? storedSettings.autoDownload : true,
+      storageMode: storedSettings.storageMode || "individual"
     };
 
-    // Update settings UI
     settingSaveDir.value = currentSettings.saveDirectory;
     settingFormat.value = currentSettings.fileFormat;
     settingAutoDownload.checked = currentSettings.autoDownload;
+    if (settingStorageMode) {
+      settingStorageMode.value = currentSettings.storageMode;
+    }
     sidebarSaveDir.textContent = currentSettings.saveDirectory;
 
-    updateUI();
+    buildIndexes();
+    applyFilterAndResetPagination();
   }
 
-  // Update UI and re-render
-  function updateUI() {
-    sidebarTotalCount.textContent = citations.length;
-    updateSelectionBadges();
-    renderSidebarFilters();
-    renderCitations();
-    if (collagePane.classList.contains("active")) {
-      renderCollage();
-    }
-  }
+  // 3. High-Speed In-Memory Indexing
+  function buildIndexes() {
+    projectIndex = new Map();
+    tagIndex = new Map();
 
-  function updateSelectionBadges() {
-    const count = selectedIds.size;
-    sidebarSelectedCount.textContent = count;
-    selectedBadge.textContent = count;
-  }
+    allCitations.forEach(item => {
+      // Project index
+      const p = item.project || "일반";
+      if (!projectIndex.has(p)) projectIndex.set(p, []);
+      projectIndex.get(p).push(item.id);
 
-  // 3. Render Sidebar Projects and Tags
-  function renderSidebarFilters() {
-    // Projects
-    const projectCounts = {};
-    citations.forEach(c => {
-      const p = c.project || "일반";
-      projectCounts[p] = (projectCounts[p] || 0) + 1;
+      // Tag index
+      (item.tags || []).forEach(t => {
+        const cleanTag = t.replace(/^#/, "");
+        if (!tagIndex.has(cleanTag)) tagIndex.set(cleanTag, []);
+        tagIndex.get(cleanTag).push(item.id);
+      });
     });
 
+    sidebarTotalCount.textContent = allCitations.length;
+    renderSidebarFilters();
+  }
+
+  // 4. Render Sidebar Filters
+  function renderSidebarFilters() {
+    // Projects
     sidebarProjects.innerHTML = "";
-    // "전체 보기"
     const allItem = document.createElement("div");
     allItem.className = `project-filter-item ${filterState.project === null ? "active" : ""}`;
-    allItem.innerHTML = `<span>전체 프로젝트</span> <span class="nav-count">${citations.length}</span>`;
+    allItem.innerHTML = `<span>전체 프로젝트</span> <span class="nav-count">${allCitations.length}</span>`;
     allItem.addEventListener("click", () => {
       filterState.project = null;
-      updateUI();
+      applyFilterAndResetPagination();
     });
     sidebarProjects.appendChild(allItem);
 
-    Object.entries(projectCounts).forEach(([project, count]) => {
+    for (const [project, idList] of projectIndex.entries()) {
       const el = document.createElement("div");
       el.className = `project-filter-item ${filterState.project === project ? "active" : ""}`;
-      el.innerHTML = `<span>${escapeHtml(project)}</span> <span class="nav-count">${count}</span>`;
+      el.innerHTML = `<span>${escapeHtml(project)}</span> <span class="nav-count">${idList.length}</span>`;
       el.addEventListener("click", () => {
         filterState.project = filterState.project === project ? null : project;
-        updateUI();
+        applyFilterAndResetPagination();
       });
       sidebarProjects.appendChild(el);
-    });
+    }
 
     // Tags
-    const tagCounts = {};
-    citations.forEach(c => {
-      (c.tags || []).forEach(t => {
-        const clean = t.replace(/^#/, "");
-        tagCounts[clean] = (tagCounts[clean] || 0) + 1;
-      });
-    });
-
     sidebarTags.innerHTML = "";
-    Object.entries(tagCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 20)
-      .forEach(([tag, count]) => {
-        const pill = document.createElement("span");
-        pill.className = `tag-pill ${filterState.tag === tag ? "active" : ""}`;
-        pill.textContent = `#${tag} (${count})`;
-        pill.addEventListener("click", () => {
-          filterState.tag = filterState.tag === tag ? null : tag;
-          updateUI();
-        });
-        sidebarTags.appendChild(pill);
+    const sortedTags = Array.from(tagIndex.entries())
+      .sort((a, b) => b[1].length - a[1].length)
+      .slice(0, 25);
+
+    sortedTags.forEach(([tag, idList]) => {
+      const pill = document.createElement("span");
+      pill.className = `tag-pill ${filterState.tag === tag ? "active" : ""}`;
+      pill.textContent = `#${tag} (${idList.length})`;
+      pill.addEventListener("click", () => {
+        filterState.tag = filterState.tag === tag ? null : tag;
+        applyFilterAndResetPagination();
       });
+      sidebarTags.appendChild(pill);
+    });
   }
 
-  // 4. Render Citations List
-  function renderCitations() {
+  // 5. Filtering & Chunked Rendering
+  function applyFilterAndResetPagination() {
     const q = filterState.search.toLowerCase().trim();
-    const filtered = citations.filter(item => {
+
+    // Fast indexed filtering
+    filteredCitations = allCitations.filter(item => {
       if (filterState.project && (item.project || "일반") !== filterState.project) {
         return false;
       }
@@ -220,134 +236,201 @@ document.addEventListener("DOMContentLoaded", async () => {
       return true;
     });
 
-    // Filter indicator
+    // Update filter status header
     if (filterState.project || filterState.tag || q) {
       filterStatus.style.display = "flex";
       const parts = [];
       if (filterState.project) parts.push(`프로젝트: ${filterState.project}`);
       if (filterState.tag) parts.push(`태그: #${filterState.tag}`);
       if (q) parts.push(`검색어: "${q}"`);
-      filterStatusText.textContent = `필터 적용: ${parts.join(" | ")} (총 ${filtered.length}건)`;
+      filterStatusText.textContent = `필터 적용: ${parts.join(" | ")} (총 ${filteredCitations.length}건)`;
     } else {
       filterStatus.style.display = "none";
     }
 
-    if (citations.length === 0) {
+    // Reset pagination state
+    currentlyRenderedCount = 0;
+    citationsContainer.innerHTML = "";
+
+    if (allCitations.length === 0) {
       emptyState.style.display = "block";
       citationsContainer.style.display = "none";
+      scrollSentinel.style.display = "none";
       return;
     }
 
     emptyState.style.display = "none";
     citationsContainer.style.display = "grid";
-    citationsContainer.innerHTML = "";
 
-    if (filtered.length === 0) {
+    if (filteredCitations.length === 0) {
       citationsContainer.innerHTML = `
         <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #94a3b8;">
           검색 조건에 맞는 인용 기록이 없습니다.
         </div>
       `;
+      scrollSentinel.style.display = "none";
       return;
     }
 
-    filtered.forEach(item => {
-      const card = document.createElement("div");
-      const isSelected = selectedIds.has(item.id);
-      card.className = `citation-card ${isSelected ? "selected" : ""}`;
-
-      const tagsHtml = (item.tags || []).map(t => `<span class="card-tag">#${escapeHtml(t.replace(/^#/, ""))}</span>`).join("");
-      const noteHtml = item.note ? `
-        <div class="card-note">
-          <b>💭 메모:</b> ${escapeHtml(item.note)}
-        </div>
-      ` : "";
-
-      card.innerHTML = `
-        <div class="card-top">
-          <label class="card-checkbox-label">
-            <input type="checkbox" class="citation-check" data-id="${item.id}" ${isSelected ? "checked" : ""} />
-            <span class="card-project">${escapeHtml(item.project || "일반")}</span>
-          </label>
-          <span class="card-date">${escapeHtml(item.datetime || "")}</span>
-        </div>
-
-        <div class="card-quote" title="${escapeHtml(item.quote)}">
-          "${escapeHtml(item.quote)}"
-        </div>
-
-        ${noteHtml}
-
-        <div class="card-tags">
-          ${tagsHtml}
-        </div>
-
-        <div class="card-footer">
-          <a href="${item.url}" target="_blank" class="card-source" title="${item.url}">
-            🌐 ${escapeHtml(item.domain || item.title || "출처 웹페이지")}
-          </a>
-          <div class="card-actions">
-            <button class="icon-btn btn-card-copy" title="마크다운 인용 복사">📋</button>
-            <button class="icon-btn btn-card-download" title="파일 다시 다운로드">📥</button>
-            <button class="icon-btn icon-btn-danger btn-card-delete" title="삭제">🗑️</button>
-          </div>
-        </div>
-      `;
-
-      // Checkbox listener
-      const checkbox = card.querySelector(".citation-check");
-      checkbox.addEventListener("change", (e) => {
-        if (e.target.checked) {
-          selectedIds.add(item.id);
-        } else {
-          selectedIds.delete(item.id);
-        }
-        card.classList.toggle("selected", e.target.checked);
-        updateSelectionBadges();
-      });
-
-      // Copy Action
-      card.querySelector(".btn-card-copy").addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const mdCitation = `> ${item.quote}\n\n— [${item.title}](${item.url}) (${item.datetime})`;
-        await navigator.clipboard.writeText(mdCitation);
-        showToast("마크다운 인용이 복사되었습니다.");
-      });
-
-      // Download File Action
-      card.querySelector(".btn-card-download").addEventListener("click", async (e) => {
-        e.stopPropagation();
-        downloadSingleCitation(item);
-      });
-
-      // Delete Action
-      card.querySelector(".btn-card-delete").addEventListener("click", async (e) => {
-        e.stopPropagation();
-        if (confirm("이 인용 기록을 삭제하시겠습니까?")) {
-          citations = citations.filter(c => c.id !== item.id);
-          selectedIds.delete(item.id);
-          await chrome.storage.local.set({ citations });
-          showToast("인용이 삭제되었습니다.");
-          updateUI();
-        }
-      });
-
-      citationsContainer.appendChild(card);
-    });
+    renderNextChunk();
+    renderSidebarFilters();
   }
 
-  // 5. Search & Filter Handlers
+  // Render the next chunk (PAGE_SIZE items)
+  function renderNextChunk() {
+    if (currentlyRenderedCount >= filteredCitations.length) {
+      scrollSentinel.style.display = "none";
+      return;
+    }
+
+    const nextBatch = filteredCitations.slice(
+      currentlyRenderedCount,
+      currentlyRenderedCount + PAGE_SIZE
+    );
+
+    const fragment = document.createDocumentFragment();
+
+    nextBatch.forEach(item => {
+      const card = createCitationCard(item);
+      fragment.appendChild(card);
+    });
+
+    citationsContainer.appendChild(fragment);
+    currentlyRenderedCount += nextBatch.length;
+
+    if (currentlyRenderedCount < filteredCitations.length) {
+      scrollSentinel.style.display = "block";
+    } else {
+      scrollSentinel.style.display = "none";
+    }
+  }
+
+  // Create single card DOM node
+  function createCitationCard(item) {
+    const card = document.createElement("div");
+    const isSelected = selectedIds.has(item.id);
+    card.className = `citation-card ${isSelected ? "selected" : ""}`;
+
+    const tagsHtml = (item.tags || []).map(t => `<span class="card-tag">#${escapeHtml(t.replace(/^#/, ""))}</span>`).join("");
+    const noteHtml = item.note ? `
+      <div class="card-note">
+        <b>💭 메모:</b> ${escapeHtml(item.note)}
+      </div>
+    ` : "";
+
+    card.innerHTML = `
+      <div class="card-top">
+        <label class="card-checkbox-label">
+          <input type="checkbox" class="citation-check" data-id="${item.id}" ${isSelected ? "checked" : ""} />
+          <span class="card-project">${escapeHtml(item.project || "일반")}</span>
+        </label>
+        <span class="card-date">${escapeHtml(item.datetime || "")}</span>
+      </div>
+
+      <div class="card-quote" title="${escapeHtml(item.quote)}">
+        "${escapeHtml(item.quote)}"
+      </div>
+
+      ${noteHtml}
+
+      <div class="card-tags">
+        ${tagsHtml}
+      </div>
+
+      <div class="card-footer">
+        <a href="${item.url}" target="_blank" class="card-source" title="${item.url}">
+          🌐 ${escapeHtml(item.domain || item.title || "출처 웹페이지")}
+        </a>
+        <div class="card-actions">
+          <button class="icon-btn btn-card-copy" title="마크다운 인용 복사">📋</button>
+          <button class="icon-btn btn-card-download" title="파일 다시 다운로드">📥</button>
+          <button class="icon-btn icon-btn-danger btn-card-delete" title="삭제">🗑️</button>
+        </div>
+      </div>
+    `;
+
+    // Listeners
+    const checkbox = card.querySelector(".citation-check");
+    checkbox.addEventListener("change", (e) => {
+      if (e.target.checked) {
+        selectedIds.add(item.id);
+      } else {
+        selectedIds.delete(item.id);
+      }
+      card.classList.toggle("selected", e.target.checked);
+      updateSelectionBadges();
+    });
+
+    card.querySelector(".btn-card-copy").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const mdCitation = `> ${item.quote}\n\n— [${item.title}](${item.url}) (${item.datetime})`;
+      await navigator.clipboard.writeText(mdCitation);
+      showToast("마크다운 인용이 복사되었습니다.");
+    });
+
+    card.querySelector(".btn-card-download").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      downloadSingleCitation(item);
+    });
+
+    card.querySelector(".btn-card-delete").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (confirm("이 인용 기록을 삭제하시겠습니까?")) {
+        await dbDeleteCitation(item.id);
+        allCitations = allCitations.filter(c => c.id !== item.id);
+        selectedIds.delete(item.id);
+
+        // Update cached stats for popup
+        await chrome.storage.local.set({
+          totalCount: allCitations.length,
+          recentCitations: allCitations.slice(0, 5)
+        });
+
+        showToast("인용이 삭제되었습니다.");
+        buildIndexes();
+        applyFilterAndResetPagination();
+      }
+    });
+
+    return card;
+  }
+
+  // Infinite Scroll Observer
+  function setupInfiniteScroll() {
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        renderNextChunk();
+      }
+    }, {
+      root: libraryPane,
+      rootMargin: "200px"
+    });
+
+    observer.observe(scrollSentinel);
+  }
+
+  function updateSelectionBadges() {
+    const count = selectedIds.size;
+    sidebarSelectedCount.textContent = count;
+    selectedBadge.textContent = count;
+  }
+
+  // 6. Search with Debounce (150ms)
+  let searchDebounceTimer = null;
   searchInput.addEventListener("input", (e) => {
-    filterState.search = e.target.value;
-    btnClearSearch.style.display = filterState.search ? "block" : "none";
-    renderCitations();
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+      filterState.search = e.target.value;
+      btnClearSearch.style.display = filterState.search ? "block" : "none";
+      applyFilterAndResetPagination();
+    }, 150);
   });
 
   btnClearSearch.addEventListener("click", () => {
     searchInput.value = "";
     filterState.search = "";
     btnClearSearch.style.display = "none";
-    renderCitations();
+    applyFilterAndResetPagination();
   });
 
   btnResetFilters.addEventListener("click", () => {
@@ -356,18 +439,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     filterState.tag = null;
     searchInput.value = "";
     btnClearSearch.style.display = "none";
-    updateUI();
+    applyFilterAndResetPagination();
   });
 
   btnSelectAll.addEventListener("click", () => {
-    if (selectedIds.size === citations.length) {
+    if (selectedIds.size === filteredCitations.length) {
       selectedIds.clear();
       btnSelectAll.textContent = "전체 선택";
     } else {
-      citations.forEach(c => selectedIds.add(c.id));
+      filteredCitations.forEach(c => selectedIds.add(c.id));
       btnSelectAll.textContent = "전체 해제";
     }
-    updateUI();
+    document.querySelectorAll(".citation-check").forEach(cb => {
+      cb.checked = selectedIds.has(cb.dataset.id);
+      cb.closest(".citation-card").classList.toggle("selected", cb.checked);
+    });
+    updateSelectionBadges();
   });
 
   btnOpenCollageTab.addEventListener("click", () => {
@@ -375,12 +462,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     switchTab("collage");
   });
 
-  // 6. Collage Generator
+  // 7. Collage Generator
   function renderCollage() {
-    const selectedList = citations.filter(c => selectedIds.has(c.id));
+    const selectedList = allCitations.filter(c => selectedIds.has(c.id));
     collageSelectionCount.textContent = selectedList.length;
 
-    // Sidebar selected previews
     collageSelectedItems.innerHTML = "";
     if (selectedList.length === 0) {
       collageSelectedItems.innerHTML = `
@@ -403,14 +489,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         `;
         div.querySelector("[data-remove]").addEventListener("click", () => {
           selectedIds.delete(item.id);
-          updateUI();
+          updateSelectionBadges();
           renderCollage();
         });
         collageSelectedItems.appendChild(div);
       });
     }
 
-    // Generate output text
     generateCollageDocument(selectedList);
   }
 
@@ -429,7 +514,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       doc += `- **선택된 인용 수**: ${items.length}개\n\n`;
       doc += `---\n\n`;
 
-      // Group by Project
       const grouped = {};
       items.forEach(it => {
         const p = it.project || "일반 자료";
@@ -468,7 +552,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
       collageOutput.value = doc;
     } else {
-      // Plain text
       let doc = `=== 인용 콜라주 자료 정리 (${nowStr}) ===\n\n`;
       items.forEach((c, idx) => {
         doc += `[${idx + 1}] ${c.project ? `[${c.project}] ` : ""}${c.title}\n`;
@@ -481,13 +564,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   collageStyle.addEventListener("change", () => {
-    const selectedList = citations.filter(c => selectedIds.has(c.id));
+    const selectedList = allCitations.filter(c => selectedIds.has(c.id));
     generateCollageDocument(selectedList);
   });
 
   btnClearSelection.addEventListener("click", () => {
     selectedIds.clear();
-    updateUI();
+    updateSelectionBadges();
     renderCollage();
   });
 
@@ -509,19 +592,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     showToast("콜라주 파일(.md)이 다운로드되었습니다.");
   });
 
-  // 7. Settings Handlers
+  // 8. Settings Handlers
   btnSaveSettings.addEventListener("click", async () => {
     const saveDirectory = settingSaveDir.value.trim() || "cite-log";
     const fileFormat = settingFormat.value;
     const autoDownload = settingAutoDownload.checked;
+    const storageMode = settingStorageMode ? settingStorageMode.value : "individual";
 
     await chrome.storage.local.set({
       saveDirectory,
       fileFormat,
-      autoDownload
+      autoDownload,
+      storageMode
     });
 
-    currentSettings = { saveDirectory, fileFormat, autoDownload };
+    currentSettings = { saveDirectory, fileFormat, autoDownload, storageMode };
     sidebarSaveDir.textContent = saveDirectory;
     showToast("설정이 저장되었습니다.");
   });
@@ -529,10 +614,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Backup: Export JSON
   const exportJsonHandler = () => {
     const backupData = {
-      version: "1.0.0",
+      version: "1.0.1",
       exportDate: new Date().toISOString(),
       settings: currentSettings,
-      citations: citations
+      citations: allCitations
     };
     const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -547,7 +632,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   btnExportJson.addEventListener("click", exportJsonHandler);
   btnBackupExport.addEventListener("click", exportJsonHandler);
 
-  // Backup: Import JSON
+  // Backup: Import JSON into IndexedDB
   inputBackupFile.addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -557,18 +642,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       try {
         const parsed = JSON.parse(event.target.result);
         if (Array.isArray(parsed.citations)) {
-          // Merge by ID
-          const existingIds = new Set(citations.map(c => c.id));
-          let added = 0;
-          parsed.citations.forEach(item => {
-            if (!existingIds.has(item.id)) {
-              citations.unshift(item);
-              added++;
-            }
+          await dbBulkInsert(parsed.citations);
+          allCitations = await dbGetAllCitations();
+
+          await chrome.storage.local.set({
+            totalCount: allCitations.length,
+            recentCitations: allCitations.slice(0, 5)
           });
-          await chrome.storage.local.set({ citations });
-          showToast(`백업 복원 완료: ${added}개의 새로운 인용 추가됨`);
-          updateUI();
+
+          showToast(`백업 복원 완료: ${parsed.citations.length}개의 인용 불러옴`);
+          buildIndexes();
+          applyFilterAndResetPagination();
         } else {
           alert("유효한 cite-log 백업 파일이 아닙니다.");
         }
@@ -582,11 +666,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Danger: Clear all
   btnClearAll.addEventListener("click", async () => {
     if (confirm("정말로 모든 인용 히스토리를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) {
-      citations = [];
+      await dbClearAll();
+      allCitations = [];
       selectedIds.clear();
-      await chrome.storage.local.set({ citations: [] });
+
+      await chrome.storage.local.set({
+        totalCount: 0,
+        recentCitations: []
+      });
+
       showToast("모든 인용 히스토리가 삭제되었습니다.");
-      updateUI();
+      buildIndexes();
+      applyFilterAndResetPagination();
     }
   });
 

@@ -45,6 +45,7 @@ jobs:
           zip -r "$ZIP_NAME" \
             manifest.json \
             background.js \
+            db.js \
             content.js \
             content.css \
             icons \

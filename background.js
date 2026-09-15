@@ -1,8 +1,8 @@
 // cite-log - Background Service Worker (Manifest V3)
+importScripts("db.js");
 
 // 1. Extension Lifecycle & Context Menu Setup
 chrome.runtime.onInstalled.addListener(async () => {
-  // Remove existing menu items if any to avoid duplicates
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: "cite-log-collect",
@@ -11,30 +11,33 @@ chrome.runtime.onInstalled.addListener(async () => {
     });
   });
 
+  // Migrate legacy storage data to IndexedDB if exists
+  await migrateFromStorageIfNeeded();
+
   // Initialize default configuration
   const current = await chrome.storage.local.get([
     "saveDirectory",
     "fileFormat",
     "autoDownload",
-    "citations"
+    "storageMode" // "individual" | "daily" | "project"
   ]);
 
   await chrome.storage.local.set({
     saveDirectory: current.saveDirectory || "cite-log",
     fileFormat: current.fileFormat || "md",
     autoDownload: current.autoDownload !== undefined ? current.autoDownload : true,
-    citations: current.citations || []
+    storageMode: current.storageMode || "individual"
   });
 
-  updateBadgeCount();
+  await updateBadgeCount();
 });
 
 // Update badge count with total citations
 async function updateBadgeCount() {
   try {
-    const { citations = [] } = await chrome.storage.local.get("citations");
-    if (citations.length > 0) {
-      await chrome.action.setBadgeText({ text: String(citations.length) });
+    const count = await dbGetCount();
+    if (count > 0) {
+      await chrome.action.setBadgeText({ text: String(count) });
       await chrome.action.setBadgeBackgroundColor({ color: "#4F46E5" });
     } else {
       await chrome.action.setBadgeText({ text: "" });
@@ -59,7 +62,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     try {
       await chrome.tabs.sendMessage(tab.id, payload);
     } catch (err) {
-      // Content script may not be injected if tab was opened before extension installation
+      // Content script fallback injection
       try {
         await chrome.scripting.executeScript({
           target: { tabId: tab.id },
@@ -77,10 +80,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
-// 3. Helper to format citation into Markdown / Text
+// 3. Helpers to format citations
 function formatCitationFile(item, format = "md") {
   const dateStr = item.datetime || new Date().toLocaleString("ko-KR");
-  const tagsStr = (item.tags || []).map(t => `#${t.replace(/^#/, "")}`).join(" ");
 
   if (format === "md") {
     const noteSection = item.note ? `\n### 📝 메모 & 코멘트\n${item.note}\n` : "";
@@ -100,6 +102,7 @@ ${noteSection}`;
     return JSON.stringify(item, null, 2);
   } else {
     // Plain text format
+    const tagsStr = (item.tags || []).map(t => `#${t.replace(/^#/, "")}`).join(" ");
     return `========================================
 [cite-log 인용 기록]
 제목: ${item.title || "제목 없음"}
@@ -118,7 +121,28 @@ ${item.note || "(없음)"}
   }
 }
 
-// Helper to sanitize filenames
+// Format Daily Log Document
+function formatDailyLogFile(dateOnly, citationsForToday) {
+  let doc = `# 📅 ${dateOnly} 인용 로그 (Daily Log)\n\n`;
+  doc += `> 수집된 인용: ${citationsForToday.length}개\n\n`;
+  doc += `---\n\n`;
+
+  citationsForToday.forEach((c, idx) => {
+    const timeOnly = c.datetime ? c.datetime.split(" ")[1] : "";
+    const tagsStr = (c.tags || []).map(t => `#${t.replace(/^#/, "")}`).join(" ");
+    doc += `## ${idx + 1}. ${c.title || "참고 문헌"} [${timeOnly}]\n\n`;
+    doc += `> ${c.quote.split("\n").join("\n> ")}\n\n`;
+    if (c.note) {
+      doc += `### 📝 메모 & 코멘트\n${c.note}\n\n`;
+    }
+    doc += `- **출처**: [${c.domain || c.url}](${c.url})\n`;
+    doc += `- **프로젝트**: ${c.project || "일반"}${tagsStr ? ` | **태그**: ${tagsStr}` : ""}\n\n`;
+    doc += `---\n\n`;
+  });
+
+  return doc;
+}
+
 function sanitizeFilename(name) {
   return name
     .replace(/[\\/*?:"<>|]/g, "_")
@@ -132,41 +156,73 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     try {
       if (message.action === "SAVE_CITATION") {
         const item = message.data;
-        const { saveDirectory = "cite-log", fileFormat = "md", autoDownload = true, citations = [] } =
-          await chrome.storage.local.get(["saveDirectory", "fileFormat", "autoDownload", "citations"]);
+        const {
+          saveDirectory = "cite-log",
+          fileFormat = "md",
+          autoDownload = true,
+          storageMode = "individual"
+        } = await chrome.storage.local.get([
+          "saveDirectory",
+          "fileFormat",
+          "autoDownload",
+          "storageMode"
+        ]);
 
         const ext = fileFormat === "json" ? "json" : (fileFormat === "txt" ? "txt" : "md");
-        
-        // Generate filename: YYYYMMDD_HHMMSS_Title.ext
+        const cleanDir = (saveDirectory || "cite-log").replace(/\/+$/, "");
+
+        // 1. Save to high-performance IndexedDB
+        await dbSaveCitation(item);
+
+        // 2. Prepare file & auto download
+        let filename = "";
+        let conflictAction = "uniquify";
+        let fileContent = "";
+
         const now = new Date();
         const datePrefix = now.toISOString().replace(/[-:T]/g, "").slice(0, 14);
         const titleSlug = sanitizeFilename(item.project ? `${item.project}_${item.title}` : item.title);
-        const filename = `${datePrefix}_${titleSlug || "citation"}.${ext}`;
 
-        const fileContent = formatCitationFile(item, ext);
+        if (storageMode === "daily") {
+          const todayItems = await dbGetCitationsByDate(item.dateOnly);
+          fileContent = formatDailyLogFile(item.dateOnly, todayItems);
+          filename = `${cleanDir}/${item.dateOnly}.${ext}`;
+          conflictAction = "overwrite";
+        } else if (storageMode === "project") {
+          const projSlug = sanitizeFilename(item.project || "일반");
+          fileContent = formatCitationFile(item, ext);
+          filename = `${cleanDir}/${projSlug}/${datePrefix}_${titleSlug || "citation"}.${ext}`;
+          conflictAction = "uniquify";
+        } else {
+          // individual
+          fileContent = formatCitationFile(item, ext);
+          filename = `${cleanDir}/${datePrefix}_${titleSlug || "citation"}.${ext}`;
+          conflictAction = "uniquify";
+        }
 
-        // Auto download file to target folder if enabled
         if (autoDownload) {
           const base64Content = btoa(unescape(encodeURIComponent(fileContent)));
           const dataUrl = `data:text/plain;charset=utf-8;base64,${base64Content}`;
-          const cleanDir = (saveDirectory || "cite-log").replace(/\/+$/, "");
-          const fullPath = `${cleanDir}/${filename}`;
 
           await chrome.downloads.download({
             url: dataUrl,
-            filename: fullPath,
-            conflictAction: "uniquify",
+            filename: filename,
+            conflictAction: conflictAction,
             saveAs: false
           });
         }
 
-        // Store item in local storage
         item.filename = filename;
         item.downloaded = autoDownload;
-        citations.unshift(item); // prepend newest first
-        await chrome.storage.local.set({ citations });
 
-        // Update badge count
+        // 3. Update cached stats for instant popup display
+        const totalCount = await dbGetCount();
+        const recentItems = await dbGetAllCitations();
+        await chrome.storage.local.set({
+          totalCount: totalCount,
+          recentCitations: recentItems.slice(0, 5)
+        });
+
         await updateBadgeCount();
 
         sendResponse({ success: true, filename });
@@ -174,7 +230,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const settings = await chrome.storage.local.get([
           "saveDirectory",
           "fileFormat",
-          "autoDownload"
+          "autoDownload",
+          "storageMode"
         ]);
         sendResponse({ success: true, settings });
       } else if (message.action === "OPEN_DASHBOARD") {
@@ -186,5 +243,5 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: false, error: error.message });
     }
   })();
-  return true; // Keep channel open for async response
+  return true;
 });

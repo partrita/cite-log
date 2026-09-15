@@ -1,23 +1,37 @@
-// cite-log - Popup Script
+// cite-log - Popup Script (Optimized with IndexedDB & Cache)
 
 document.addEventListener("DOMContentLoaded", async () => {
-  const { citations = [] } = await chrome.storage.local.get("citations");
+  // 1. Instant Cache Render
+  const cached = await chrome.storage.local.get(["totalCount", "recentCitations"]);
+  let citations = cached.recentCitations || [];
+  let totalCount = cached.totalCount !== undefined ? cached.totalCount : null;
+
+  // If cache is empty or incomplete, query IndexedDB directly
+  if (totalCount === null || citations.length === 0) {
+    try {
+      totalCount = await dbGetCount();
+      citations = (await dbGetAllCitations()).slice(0, 5);
+      await chrome.storage.local.set({ totalCount, recentCitations: citations });
+    } catch (e) {
+      console.warn("IndexedDB load fallback:", e);
+      citations = [];
+      totalCount = 0;
+    }
+  }
 
   // Update Stats
-  const totalCount = citations.length;
   document.getElementById("total-badge").textContent = `${totalCount}개`;
   document.getElementById("stat-citations").textContent = totalCount;
 
   const projectsSet = new Set(citations.map(c => c.project || "일반"));
   document.getElementById("stat-projects").textContent = projectsSet.size;
 
-  // Render recent items (up to 5)
+  // Render recent items
   const listEl = document.getElementById("recent-list");
   if (citations.length > 0) {
     listEl.innerHTML = "";
-    const recents = citations.slice(0, 5);
 
-    recents.forEach(item => {
+    citations.forEach(item => {
       const itemEl = document.createElement("div");
       itemEl.className = "citation-item";
 
@@ -38,7 +52,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         </div>
       `;
 
-      // Copy Markdown citation button listener
       itemEl.querySelector(".btn-copy").addEventListener("click", async (e) => {
         e.stopPropagation();
         const copyBtn = e.target;
@@ -56,12 +69,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // Action: Open Dashboard & Collage Maker
+  // Navigation handlers
   document.getElementById("btn-open-dashboard").addEventListener("click", () => {
     chrome.tabs.create({ url: chrome.runtime.getURL("dashboard/dashboard.html") });
   });
 
-  // Action: Open Options / Settings in Dashboard
   document.getElementById("btn-options").addEventListener("click", () => {
     chrome.tabs.create({ url: chrome.runtime.getURL("dashboard/dashboard.html#settings") });
   });
