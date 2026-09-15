@@ -681,6 +681,145 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  // 9. Manual Add Citation Modal Logic
+  const manualModal = document.getElementById("manual-modal");
+  const btnManualAdd = document.getElementById("btn-manual-add");
+  const btnEmptyManualAdd = document.getElementById("btn-empty-manual-add");
+  const btnCloseManualModal = document.getElementById("btn-close-manual-modal");
+  const btnCancelManualModal = document.getElementById("btn-cancel-manual-modal");
+  const btnSubmitManualModal = document.getElementById("btn-submit-manual-modal");
+
+  const inputManualQuote = document.getElementById("manual-quote");
+  const inputManualNote = document.getElementById("manual-note");
+  const inputManualProject = document.getElementById("manual-project");
+  const inputManualTags = document.getElementById("manual-tags");
+  const inputManualTitle = document.getElementById("manual-title");
+  const inputManualUrl = document.getElementById("manual-url");
+  const checkManualSaveFile = document.getElementById("manual-save-file");
+
+  function openManualModal() {
+    manualModal.style.display = "flex";
+    if (filterState.project) {
+      inputManualProject.value = filterState.project;
+    }
+    if (filterState.tag) {
+      inputManualTags.value = filterState.tag;
+    }
+    inputManualQuote.focus();
+  }
+
+  function closeManualModal() {
+    manualModal.style.display = "none";
+    inputManualQuote.value = "";
+    inputManualNote.value = "";
+    inputManualProject.value = "";
+    inputManualTags.value = "";
+    inputManualTitle.value = "";
+    inputManualUrl.value = "";
+  }
+
+  async function submitManualCitation() {
+    const quote = inputManualQuote.value.trim();
+    if (!quote) {
+      alert("인용 문장을 입력해주세요.");
+      inputManualQuote.focus();
+      return;
+    }
+
+    btnSubmitManualModal.disabled = true;
+    btnSubmitManualModal.textContent = "추가 중...";
+
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const dateOnly = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const formattedDate = `${dateOnly} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+    const urlVal = inputManualUrl.value.trim();
+    let domain = "직접 입력";
+    if (urlVal) {
+      try {
+        const parsedUrl = new URL(urlVal.startsWith("http") ? urlVal : `https://${urlVal}`);
+        domain = parsedUrl.hostname;
+      } catch (e) {
+        domain = "직접 입력";
+      }
+    }
+
+    const rawTags = inputManualTags.value.split(/[,#\s]+/).filter(Boolean);
+    const titleVal = inputManualTitle.value.trim() || (quote.length > 30 ? quote.slice(0, 30) + "..." : quote);
+    const projectVal = inputManualProject.value.trim() || "일반";
+
+    const citationData = {
+      id: `cite_${Date.now()}`,
+      quote: quote,
+      note: inputManualNote.value.trim(),
+      project: projectVal,
+      tags: rawTags,
+      title: titleVal,
+      url: urlVal || "",
+      domain: domain,
+      author: "",
+      datetime: formattedDate,
+      dateOnly: dateOnly,
+      timestamp: Date.now()
+    };
+
+    try {
+      const shouldSaveFile = checkManualSaveFile.checked;
+
+      if (shouldSaveFile) {
+        await chrome.runtime.sendMessage({
+          action: "SAVE_CITATION",
+          data: citationData
+        });
+      } else {
+        await dbSaveCitation(citationData);
+      }
+
+      allCitations = await dbGetAllCitations();
+
+      await chrome.storage.local.set({
+        totalCount: allCitations.length,
+        recentCitations: allCitations.slice(0, 5)
+      });
+
+      closeManualModal();
+      buildIndexes();
+      applyFilterAndResetPagination();
+      showToast("새 인용이 라이브러리에 추가되었습니다!");
+    } catch (err) {
+      console.error("Error saving manual citation:", err);
+      showToast("인용 저장 중 오류가 발생했습니다.");
+    } finally {
+      btnSubmitManualModal.disabled = false;
+      btnSubmitManualModal.textContent = "인용 추가";
+    }
+  }
+
+  btnManualAdd.addEventListener("click", openManualModal);
+  if (btnEmptyManualAdd) {
+    btnEmptyManualAdd.addEventListener("click", openManualModal);
+  }
+  btnCloseManualModal.addEventListener("click", closeManualModal);
+  btnCancelManualModal.addEventListener("click", closeManualModal);
+  btnSubmitManualModal.addEventListener("click", submitManualCitation);
+
+  manualModal.addEventListener("click", (e) => {
+    if (e.target === manualModal) {
+      closeManualModal();
+    }
+  });
+
+  manualModal.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeManualModal();
+    } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      submitManualCitation();
+    }
+  });
+
   // Single Citation Download Helper
   function downloadSingleCitation(item) {
     const ext = currentSettings.fileFormat || "md";
