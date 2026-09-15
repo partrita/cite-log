@@ -103,20 +103,29 @@ git clone https://github.com/partrita/cite-log.git
 
 ## 📖 사용 가이드
 
-### 1. 문장 수집하기
+### 1. 웹페이지에서 문장 수집하기
 1. 웹페이지에서 원하는 문장을 마우스로 드래그합니다.
 2. 마우스 오른쪽 클릭 후 **`cite-log: 인용 수집하기`**를 클릭합니다.
 3. 팝업창에서 메모, 프로젝트, 태그를 입력합니다.
 4. **`Ctrl + Enter`** (또는 `저장` 버튼)를 누르면 지정된 로컬 폴더에 파일이 자동 생성되고 저장 알림이 표시됩니다.
 
-### 2. 저장되는 파일 예시 (Markdown)
+### 2. 대시보드에서 직접 수동으로 인용 추가하기 (신규 ➕)
+웹 서핑 중이 아니더라도 종이책, PDF 논문, 강의 슬라이드 등에서 읽은 문장을 언제든 대시보드에 직접 기록할 수 있습니다:
+1. 브라우저 툴바의 `cite-log` 아이콘 > **`🎨 대시보드 & 콜라주 생성기 열기`**를 누릅니다.
+2. 상단 툴바의 **`➕ 새 인용 직접 추가`** 버튼을 클릭합니다.
+3. 인용 문장, 나의 메모, 프로젝트, 태그, 출처(도서명/URL)를 입력합니다.
+4. **`Ctrl + Enter`** (또는 `인용 추가` 버튼)를 누르면 즉시 라이브러리에 등록되며, *"로컬 텍스트 파일로도 함께 저장"* 옵션을 통해 로컬 파일도 즉시 생성됩니다.
+
+### 3. 저장 파일 예시
+
+#### [기본] 개별 마크다운 파일 예시 (`YYYYMMDD_HHMMSS_[제목].md`)
 ```markdown
 ---
 title: "Attention Is All You Need"
 source: "https://arxiv.org/abs/1706.03762"
-date: "2026-09-14 09:15:30"
+date: "2026-09-15 14:49:00"
 project: "학위논문"
-tags: ["Transformer", "DeepLearning", "Attention"]
+tags: ["Transformer", "DeepLearning"]
 ---
 
 # Attention Is All You Need
@@ -127,9 +136,43 @@ tags: ["Transformer", "DeepLearning", "Attention"]
 논문 2장 관련 연구 트랜스포머 등장 배경에 인용할 것.
 ```
 
-### 3. 대시보드 & 콜라주 생성기 열기
+#### [최적화] 일간 누적 파일 예시 (`YYYY-MM-DD.md`)
+> 환경 설정에서 **"일간 누적 저장"**을 선택하면, 하루 동안 수집한 모든 인용이 아래와 같이 하나의 데일리 노트에 실시간 누적 기록됩니다:
+
+```markdown
+# 📅 2026-09-15 인용 로그 (Daily Log)
+
+> 수집된 인용: 2개
+
+---
+
+## 1. Attention Is All You Need [14:49:00]
+
+> The dominant sequence transduction models are based on complex recurrent or convolutional neural networks...
+
+### 📝 메모 & 코멘트
+논문 2장 관련 연구 트랜스포머 등장 배경에 인용할 것.
+
+- **출처**: [arxiv.org](https://arxiv.org/abs/1706.03762)
+- **프로젝트**: 학위논문 | **태그**: #Transformer #DeepLearning
+
+---
+
+## 2. Clean Architecture 요약 [15:20:10]
+
+> 소프트웨어 아키텍처의 목표는 필요한 시스템을 만들고 유지보수하는 데 투입되는 인력을 최소화하는 데 있다.
+
+### 📝 메모 & 코멘트
+세미나 발표 3번 슬라이드 핵심 인용구로 활용.
+
+- **출처**: 로버트 C. 마틴 (도서)
+- **프로젝트**: 독서노트 | **태그**: #아키텍처 #설계
+```
+
+### 4. 대시보드 & 콜라주 생성기 활용하기
 - 브라우저 상단 확장 프로그램 바에서 `cite-log` 아이콘을 누르고 **`🎨 대시보드 & 콜라주 생성기 열기`**를 누릅니다.
-- 원하는 인용들을 선택한 후 상단의 **`선택 항목으로 콜라주 만들기`**를 눌러 논문이나 발표자료의 뼈대를 즉시 완성하세요!
+- 키워드 실시간 검색 및 프로젝트/태그 필터링으로 필요한 인용구를 즉시 찾을 수 있습니다.
+- 인용 카드들의 체크박스를 선택한 후 상단의 **`선택 항목으로 콜라주 만들기`**를 눌러 논문 초안, 세미나 개요, APA 참고문헌 목록으로 한 번에 합성하여 복사/다운로드하세요!
 
 ---
 
@@ -138,14 +181,15 @@ tags: ["Transformer", "DeepLearning", "Attention"]
 ```
 cite-log/
 ├── manifest.json       # Manifest V3 확장 프로그램 설정
-├── background.js       # 백그라운드 서비스 워커 (우클릭 메뉴 등록, 파일 다운로드 처리)
-├── content.js          # 웹페이지 인라인 팝업 모달 & 메타데이터 추출
+├── background.js       # 백그라운드 서비스 워커 (우클릭 메뉴, 저장 모드 분기, 파일 다운로드)
+├── db.js               # IndexedDB 고성능 비동기 스토리지 엔진 (대용량 캐싱 & 인덱싱)
+├── content.js          # 웹페이지 인라인 팝업 모달 & 메타데이터 자동 추출
 ├── content.css         # 모달 및 토스트 알림 스타일
 ├── popup/              # 브라우저 상단 툴바 팝업
 │   ├── popup.html
 │   ├── popup.css
 │   └── popup.js
-├── dashboard/          # 인용 라이브러리 & 콜라주 워크스페이스
+├── dashboard/          # 인용 라이브러리, 수동 입력 모달 & 콜라주 워크스페이스
 │   ├── dashboard.html
 │   ├── dashboard.css
 │   └── dashboard.js
@@ -161,18 +205,18 @@ cite-log/
 Git 태그를 푸시하면 GitHub Actions가 자동으로 확장 프로그램 배포용 ZIP 파일과 SHA-256 체크섬을 생성하여 GitHub Release에 등록합니다:
 
 ```bash
-# 새로운 버전 태그 생성 (예: v1.0.0)
-git tag v1.0.0
+# 새로운 버전 태그 생성 (예: v1.0.1)
+git tag v1.0.1
 
 # 원격 저장소로 태그 푸시
-git push origin v1.0.0
+git push origin v1.0.1
 ```
 
-- 트리거 시 `cite-log-v1.0.0.zip` 파일이 자동 빌드되어 Release 에셋으로 첨부됩니다.
+- 트리거 시 `cite-log-vX.Y.Z.zip` 파일이 자동 빌드되어 Release 에셋으로 첨부됩니다.
 - GitHub 저장소의 Actions 탭에서 **'Workflow dispatch'**를 통해 수동으로 태그를 지정하여 릴리스를 생성할 수도 있습니다.
 
 ---
 
 ## 🔒 개인정보 및 보안
 - cite-log는 사용자의 어떠한 데이터도 외부 서버로 전송하지 않습니다.
-- 모든 인용구, 메모, 방문 기록은 사용자의 컴퓨터 브라우저 로컬 저장소(`chrome.storage.local`)와 지정된 로컬 폴더에만 안전하게 보관됩니다.
+- 모든 인용구, 메모, 히스토리는 사용자의 컴퓨터 브라우저 로컬 데이터베이스(`IndexedDB` / `chrome.storage.local`)와 지정된 로컬 폴더에만 안전하게 보관됩니다.
