@@ -37,21 +37,60 @@
 
 ---
 
-## 🚀 설치 방법 (Chrome / Edge / Whale / Brave 등)
+## 🚀 설치 방법
 
-cite-log는 **Windows, macOS, Linux** 모든 OS의 Chromium 기반 브라우저(크롬, 엣지, 웨일, 브레이브, 비발디 등)에서 즉시 구동됩니다.
+`cite-log`는 **Windows, macOS, Linux** 환경의 모든 Chromium 기반 브라우저(Google Chrome, Microsoft Edge, Naver Whale, Brave, Vivaldi 등)에서 간편하게 사용할 수 있습니다.
 
-1. 본 저장소를 다운로드하거나 클론합니다.
-   ```bash
-   git clone https://github.com/partrita/cite-log.git
-   ```
-2. 브라우저를 열고 확장 프로그램 관리자 페이지로 이동합니다:
-   - **Chrome**: `chrome://extensions`
-   - **Edge**: `edge://extensions`
-   - **Whale**: `whale://extensions`
-3. 우측 상단의 **'개발자 모드(Developer mode)'** 스위치를 켭니다.
-4. 좌측 상단의 **'압축해제된 확장 프로그램을 로드합니다 (Load unpacked)'** 버튼을 클릭합니다.
-5. `cite-log` 폴더를 선택하면 설치가 완료됩니다! 🎉
+### 1단계: 프로그램 파일 준비하기
+
+아래 두 가지 방법 중 편한 방법을 선택하세요.
+
+#### 방법 A. 배포용 ZIP 파일 다운로드 (일반 사용자 권장)
+1. GitHub 저장소의 [**Releases**](https://github.com/partrita/cite-log/releases) 페이지로 이동합니다.
+2. 최신 버전의 `cite-log-vX.Y.Z.zip` 파일을 다운로드합니다.
+3. 다운로드한 ZIP 파일의 압축을 원하는 폴더에 풉니다.
+
+#### 방법 B. Git으로 클론 (개발자)
+터미널을 열고 아래 명령어를 실행합니다:
+```bash
+git clone https://github.com/partrita/cite-log.git
+```
+
+---
+
+### 2단계: 브라우저에 확장 프로그램 등록하기
+
+1. 사용 중인 브라우저의 확장 프로그램 관리 페이지로 이동합니다:
+   - **Google Chrome**: 주소창에 `chrome://extensions` 입력 후 엔터
+   - **Microsoft Edge**: 주소창에 `edge://extensions` 입력 후 엔터
+   - **Naver Whale**: 주소창에 `whale://extensions` 입력 후 엔터
+   - **Brave**: 주소창에 `brave://extensions` 입력 후 엔터
+
+2. 페이지 우측 상단의 **'개발자 모드 (Developer mode)'** 토글 스위치를 켭니다.
+
+3. 상단 좌측에 새로 나타나는 **'압축해제된 확장 프로그램을 로드합니다 (Load unpacked)'** 버튼을 클릭합니다.
+
+4. 폴더 선택 창에서 압축을 푼 폴더(또는 클론한 폴더) 내의 **`manifest.json` 파일이 위치한 `cite-log` 폴더**를 선택합니다.
+
+5. 확장 프로그램 목록에 `cite-log | 스마트 인용 및 문장 수집기`가 등록되면 설치가 완료됩니다! 🎉
+
+---
+
+### 3단계: 설치 후 권장 설정 (편의성 극대화)
+
+1. **브라우저 툴바에 고정하기 (Pin)**
+   - 브라우저 우측 상단의 퍼즐 조각 모양(확장 프로그램) 아이콘을 클릭합니다.
+   - `cite-log` 옆의 **핀(📌)** 아이콘을 클릭하여 브라우저 상단 툴바에 고정하면 언제든 수집 현황과 대시보드를 바로 열어볼 수 있습니다.
+
+2. **다운로드 자동 저장 확인 (매번 묻지 않기)**
+   - 브라우저 설정(Chrome 설정 > 다운로드)에서 **'다운로드 전에 각 파일의 저장 위치 확인'** 옵션이 꺼져 있는지 확인하세요. 이 옵션이 꺼져 있어야 인용 수집 시 창이 뜨지 않고 `cite-log/` 폴더로 즉시 파일이 자동 저장됩니다.
+
+---
+
+### 🔄 최신 버전 업데이트 방법
+
+- **ZIP 파일 사용자**: 새로운 릴리스 ZIP을 다운로드하여 기존 폴더에 덮어쓴 뒤, `chrome://extensions` 페이지에서 `cite-log` 카드의 **'새로고침(🔄)'** 아이콘을 누릅니다.
+- **Git 사용자**: 폴더 내에서 `git pull` 실행 후 `chrome://extensions`에서 **'새로고침(🔄)'** 아이콘을 누릅니다.
 
 ---
 
