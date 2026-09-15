@@ -83,27 +83,19 @@ function formatCitationFile(item, format = "md") {
   const tagsStr = (item.tags || []).map(t => `#${t.replace(/^#/, "")}`).join(" ");
 
   if (format === "md") {
+    const noteSection = item.note ? `\n### 📝 메모 & 코멘트\n${item.note}\n` : "";
     return `---
 title: "${(item.title || "").replace(/"/g, '\\"')}"
 source: "${item.url || ""}"
 date: "${dateStr}"
-project: "${item.project || "General"}"
+project: "${item.project || "일반"}"
 tags: [${(item.tags || []).map(t => `"${t}"`).join(", ")}]
 ---
 
 # ${item.title || "Untitled Citation"}
 
 > ${item.quote.split("\n").join("\n> ")}
-
-### 📝 메모 & 코멘트
-${item.note ? item.note : "*(작성된 메모 없음)*"}
-
----
-- **출처 URL**: [${item.domain || item.url}](${item.url})
-- **수집 일시**: ${dateStr}
-- **프로젝트 / 분류**: ${item.project || "일반"}
-- **태그**: ${tagsStr || "없음"}
-`;
+${noteSection}`;
   } else if (format === "json") {
     return JSON.stringify(item, null, 2);
   } else {

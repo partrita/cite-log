@@ -593,6 +593,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Single Citation Download Helper
   function downloadSingleCitation(item) {
     const ext = currentSettings.fileFormat || "md";
+    const noteSection = item.note ? `\n### 📝 메모 & 코멘트\n${item.note}\n` : "";
     const text = `---
 title: "${(item.title || "").replace(/"/g, '\\"')}"
 source: "${item.url || ""}"
@@ -604,16 +605,7 @@ tags: [${(item.tags || []).map(t => `"${t}"`).join(", ")}]
 # ${item.title || "Untitled Citation"}
 
 > ${item.quote.split("\n").join("\n> ")}
-
-### 📝 메모 & 코멘트
-${item.note ? item.note : "*(작성된 메모 없음)*"}
-
----
-- **출처 URL**: [${item.domain || item.url}](${item.url})
-- **수집 일시**: ${item.datetime || ""}
-- **프로젝트**: ${item.project || "일반"}
-- **태그**: ${(item.tags || []).map(t => `#${t}`).join(" ")}
-`;
+${noteSection}`;
 
     const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);

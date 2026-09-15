@@ -118,12 +118,6 @@ tags: ["Transformer", "DeepLearning", "Attention"]
 
 ### 📝 메모 & 코멘트
 논문 2장 관련 연구 트랜스포머 등장 배경에 인용할 것.
-
----
-- **출처 URL**: [arxiv.org](https://arxiv.org/abs/1706.03762)
-- **수집 일시**: 2026-09-14 09:15:30
-- **프로젝트 / 분류**: 학위논문
-- **태그**: #Transformer #DeepLearning #Attention
 ```
 
 ### 3. 대시보드 & 콜라주 생성기 열기
