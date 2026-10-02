@@ -80,6 +80,47 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
+// Keyboard shortcut: capture the current tab without requiring a context-menu selection.
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command !== "capture-citation") return;
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.id || !/^https?:/i.test(tab.url || "")) return;
+
+    const selectionResult = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => window.getSelection ? window.getSelection().toString() : ""
+    });
+    const selectionText = selectionResult?.[0]?.result || "";
+
+    const payload = {
+      action: "OPEN_CITE_MODAL",
+      data: {
+        selectionText,
+        pageUrl: tab.url || "",
+        pageTitle: tab.title || ""
+      }
+    };
+
+    try {
+      await chrome.tabs.sendMessage(tab.id, payload);
+    } catch {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["content.js"]
+      });
+      await chrome.scripting.insertCSS({
+        target: { tabId: tab.id },
+        files: ["content.css"]
+      });
+      await chrome.tabs.sendMessage(tab.id, payload);
+    }
+  } catch (err) {
+    console.error("Failed to capture via keyboard shortcut:", err);
+  }
+});
+
 // 3. Helpers to format citations
 function formatCitationFile(item, format = "md") {
   const dateStr = item.datetime || new Date().toLocaleString("ko-KR");

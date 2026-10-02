@@ -27,7 +27,59 @@
       'meta[name="application-name"]'
     ]) || window.location.hostname;
 
-    return { author, siteName };
+    const doi = normalizeDoi(getMeta([
+      'meta[name="citation_doi"]',
+      'meta[name="dc.identifier"]',
+      'meta[name="DC.Identifier"]',
+      'meta[name="prism.doi"]',
+      'meta[property="citation_doi"]'
+    ]) || extractDoiFromUrl(window.location.href));
+
+    const journal = getMeta([
+      'meta[name="citation_journal_title"]',
+      'meta[name="citation_journal"]',
+      'meta[name="prism.publicationname"]'
+    ]);
+
+    const publishedAt = getMeta([
+      'meta[name="citation_publication_date"]',
+      'meta[name="citation_date"]',
+      'meta[name="dc.date"]',
+      'meta[name="prism.publicationdate"]'
+    ]);
+
+    const metadataTitle = getMeta([
+      'meta[name="citation_title"]',
+      'meta[name="dc.title"]',
+      'meta[property="og:title"]'
+    ]);
+
+    const metadataAuthor = getMeta([
+      'meta[name="citation_author"]',
+      'meta[name="dc.creator"]'
+    ]);
+
+    return {
+      author: author || metadataAuthor,
+      siteName,
+      doi,
+      journal,
+      publishedAt,
+      metadataTitle
+    };
+  }
+  function extractDoiFromUrl(url) {
+    const match = String(url || "").match(/(?:doi\.org\/|doi:\s*)(10\.\d{4,9}\/[^\s?#]+)/i);
+    return match ? match[1].replace(/[.,;)]$/, "") : "";
+  }
+
+  function normalizeDoi(value) {
+    return String(value || "")
+      .trim()
+      .replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "")
+      .replace(/^doi:\s*/i, "")
+      .replace(/[<>\s]+$/g, "")
+      .replace(/[.,;)]$/, "");
   }
 
   // Format date helper
@@ -90,9 +142,9 @@
   async function openCiteModal(data) {
     closeModal(); // Remove previous if any
 
-    const { author, siteName } = extractMetadata();
+    const { author, siteName, doi, journal, publishedAt, metadataTitle } = extractMetadata();
     const formattedDate = getFormattedDate();
-    const pageTitle = data.pageTitle || document.title || "제목 없음";
+    const pageTitle = metadataTitle || data.pageTitle || document.title || "제목 없음";
     const pageUrl = data.pageUrl || window.location.href;
     const selectionText = data.selectionText || "";
 
@@ -172,6 +224,22 @@
             <input type="text" class="cite-log-input" id="cite-log-pagetitle" />
           </div>
 
+          <div class="cite-log-row">
+            <div class="cite-log-field">
+              <label class="cite-log-label">DOI</label>
+              <input type="text" class="cite-log-input" id="cite-log-doi" placeholder="10.xxxx/..." />
+            </div>
+            <div class="cite-log-field">
+              <label class="cite-log-label">저널</label>
+              <input type="text" class="cite-log-input" id="cite-log-journal" placeholder="Journal / Conference" />
+            </div>
+          </div>
+
+          <div class="cite-log-field">
+            <label class="cite-log-label">출판일</label>
+            <input type="text" class="cite-log-input" id="cite-log-published" placeholder="YYYY-MM-DD" />
+          </div>
+
           <div class="cite-log-meta-bar">
             <div class="cite-log-meta-item">🌐 <a href="${pageUrl}" target="_blank" title="${pageUrl}">${siteName}</a></div>
             <div class="cite-log-meta-item">🕒 <span>${formattedDate}</span></div>
@@ -197,6 +265,9 @@
     const titleEl = document.getElementById("cite-log-pagetitle");
     const projectEl = document.getElementById("cite-log-project");
     const tagsEl = document.getElementById("cite-log-tags");
+    const doiEl = document.getElementById("cite-log-doi");
+    const journalEl = document.getElementById("cite-log-journal");
+    const publishedEl = document.getElementById("cite-log-published");
     const recentProjectsEl = document.getElementById("cite-log-recent-projects");
     const recentTagsEl = document.getElementById("cite-log-recent-tags");
 
@@ -204,6 +275,9 @@
     titleEl.value = pageTitle;
     projectEl.value = lastProject;
     tagsEl.value = lastTags;
+    doiEl.value = doi || "";
+    journalEl.value = journal || "";
+    publishedEl.value = publishedAt || "";
 
     function renderRecentChoices(container, values, input, formatter) {
       container.innerHTML = "";
@@ -252,6 +326,9 @@
         url: pageUrl,
         domain: window.location.hostname,
         author: author || "",
+        doi: normalizeDoi(doiEl.value),
+        journal: journalEl.value.trim(),
+        publishedAt: publishedEl.value.trim(),
         datetime: formattedDate,
         timestamp: Date.now()
       };
