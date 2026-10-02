@@ -326,6 +326,9 @@
         url: pageUrl,
         domain: window.location.hostname,
         author: author || "",
+        doi: normalizeDoi(doiEl.value),
+        journal: journalEl.value.trim(),
+        publishedAt: publishedEl.value.trim(),
         datetime: formattedDate,
         timestamp: Date.now()
       };
