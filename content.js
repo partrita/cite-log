@@ -30,6 +30,15 @@
     return { author, siteName };
   }
 
+  function extractDoiFromUrl(url) {
+    const match = String(url || '').match(/(?:doi\\.org\\/|doi:\\s*)(10\\.\\d{4,9}\\/[^\\s?#]+)/i);
+    return match ? match[1].replace(/[.,;)]$/, '') : '';
+  }
+
+  function normalizeDoi(value) {
+    return String(value || '').trim().replace(/^https?:\\/\\/(?:dx\\.)?doi\\.org\\//i, '').replace(/^doi:\\s*/i, '').replace(/[<>\\s]+$/g, '').replace(/[.,;)]$/, '');
+  }
+
   // Format date helper
   function getFormattedDate() {
     const now = new Date();
@@ -90,9 +99,9 @@
   async function openCiteModal(data) {
     closeModal(); // Remove previous if any
 
-    const { author, siteName } = extractMetadata();
+    const { author, siteName, doi, journal, publishedAt, metadataTitle } = extractMetadata();
     const formattedDate = getFormattedDate();
-    const pageTitle = data.pageTitle || document.title || "제목 없음";
+    const pageTitle = metadataTitle || data.pageTitle || document.title || "제목 없음";
     const pageUrl = data.pageUrl || window.location.href;
     const selectionText = data.selectionText || "";
 
