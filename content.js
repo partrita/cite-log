@@ -80,11 +80,15 @@
     // Fetch settings for folder preview
     let saveDir = "cite-log";
     let fileFormat = "md";
+    let lastProject = "";
+    let lastTags = "";
     try {
       const res = await chrome.runtime.sendMessage({ action: "GET_SETTINGS" });
       if (res && res.settings) {
         saveDir = res.settings.saveDirectory || "cite-log";
         fileFormat = res.settings.fileFormat || "md";
+        lastProject = res.settings.lastProject || "";
+        lastTags = res.settings.lastTags || "";
       }
     } catch (e) {
       console.warn("Could not retrieve settings:", e);
@@ -163,6 +167,8 @@
 
     quoteEl.value = selectionText;
     titleEl.value = pageTitle;
+    projectEl.value = lastProject;
+    tagsEl.value = lastTags;
 
     // Focus on note input for quick workflow
     noteEl.focus();
@@ -204,14 +210,19 @@
 
         closeModal();
         if (response && response.success) {
+          await chrome.storage.local.set({
+            lastProject: projectEl.value.trim(),
+            lastTags: tagsEl.value.trim()
+          });
           showToast(`인용이 저장되었습니다! 📁 ${response.filename}`);
         } else {
           showToast(`저장 완료 (히스토리 기록됨)`);
         }
       } catch (err) {
         console.error("Save error:", err);
-        closeModal();
-        showToast("저장 중 오류가 발생했습니다.");
+        saveBtn.disabled = false;
+        saveBtn.textContent = "인용 저장";
+        showToast("저장에 실패했습니다. 입력 내용을 확인한 뒤 다시 시도하세요.");
       }
     };
 

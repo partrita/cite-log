@@ -165,7 +165,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           "saveDirectory",
           "fileFormat",
           "autoDownload",
-          "storageMode"
+          "storageMode",
+          "lastProject",
+          "lastTags"
         ]);
 
         const ext = fileFormat === "json" ? "json" : (fileFormat === "txt" ? "txt" : "md");
@@ -231,7 +233,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           "saveDirectory",
           "fileFormat",
           "autoDownload",
-          "storageMode"
+          "storageMode",
+          "lastProject",
+          "lastTags"
         ]);
         sendResponse({ success: true, settings });
       } else if (message.action === "OPEN_DASHBOARD") {
