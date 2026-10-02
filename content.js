@@ -44,21 +44,40 @@
   }
 
   // Toast notification
-  function showToast(message) {
+  function showToast(message, actionLabel = "", actionHandler = null) {
     const existing = document.querySelector(".cite-log-toast");
     if (existing) existing.remove();
 
     const toast = document.createElement("div");
     toast.className = "cite-log-toast";
-    toast.innerHTML = `<span>🔖</span> <span>${message}</span>`;
+
+    const icon = document.createElement("span");
+    icon.textContent = "🔖";
+    const text = document.createElement("span");
+    text.textContent = message;
+    toast.append(icon, text);
+
+    if (actionLabel && actionHandler) {
+      const action = document.createElement("button");
+      action.className = "cite-log-toast-action";
+      action.textContent = actionLabel;
+      action.addEventListener("click", async () => {
+        action.disabled = true;
+        await actionHandler();
+        toast.remove();
+      });
+      toast.appendChild(action);
+    }
+
     document.body.appendChild(toast);
 
     setTimeout(() => {
+      if (!toast.isConnected) return;
       toast.style.transition = "opacity 0.3s ease-out, transform 0.3s ease-out";
       toast.style.opacity = "0";
       toast.style.transform = "translateY(10px)";
       setTimeout(() => toast.remove(), 300);
-    }, 3500);
+    }, actionLabel ? 5000 : 3500);
   }
 
   // Close modal
@@ -82,6 +101,8 @@
     let fileFormat = "md";
     let lastProject = "";
     let lastTags = "";
+    let recentProjects = [];
+    let recentTags = [];
     try {
       const res = await chrome.runtime.sendMessage({ action: "GET_SETTINGS" });
       if (res && res.settings) {
@@ -89,6 +110,16 @@
         fileFormat = res.settings.fileFormat || "md";
         lastProject = res.settings.lastProject || "";
         lastTags = res.settings.lastTags || "";
+        recentProjects = Array.isArray(res.settings.recentProjects) ? [...res.settings.recentProjects] : [];
+        recentTags = Array.isArray(res.settings.recentTags) ? [...res.settings.recentTags] : [];
+        if (lastProject && !recentProjects.includes(lastProject)) {
+          recentProjects.unshift(lastProject);
+        }
+        if (lastTags) {
+          lastTags.split(/[,#\s]+/).filter(Boolean).reverse().forEach((tag) => {
+            if (!recentTags.includes(tag)) recentTags.unshift(tag);
+          });
+        }
       }
     } catch (e) {
       console.warn("Could not retrieve settings:", e);
@@ -127,10 +158,12 @@
             <div class="cite-log-field">
               <label class="cite-log-label">프로젝트 / 연구 주제</label>
               <input type="text" class="cite-log-input" id="cite-log-project" placeholder="예: 학위논문, AI트렌드, 시장조사" />
+              <div class="cite-log-recent" id="cite-log-recent-projects" aria-label="최근 프로젝트"></div>
             </div>
             <div class="cite-log-field">
               <label class="cite-log-label">태그 (쉼표로 구분)</label>
               <input type="text" class="cite-log-input" id="cite-log-tags" placeholder="예: 통계, LLM, 인용구" />
+              <div class="cite-log-recent" id="cite-log-recent-tags" aria-label="최근 태그"></div>
             </div>
           </div>
 
@@ -164,17 +197,38 @@
     const titleEl = document.getElementById("cite-log-pagetitle");
     const projectEl = document.getElementById("cite-log-project");
     const tagsEl = document.getElementById("cite-log-tags");
+    const recentProjectsEl = document.getElementById("cite-log-recent-projects");
+    const recentTagsEl = document.getElementById("cite-log-recent-tags");
 
     quoteEl.value = selectionText;
     titleEl.value = pageTitle;
     projectEl.value = lastProject;
     tagsEl.value = lastTags;
 
+    function renderRecentChoices(container, values, input, formatter) {
+      container.innerHTML = "";
+      values.slice(0, 6).forEach((value) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "cite-log-recent-chip";
+        button.textContent = formatter(value);
+        button.title = value;
+        button.addEventListener("click", () => {
+          input.value = value;
+          input.focus();
+        });
+        container.appendChild(button);
+      });
+    }
+
+    renderRecentChoices(recentProjectsEl, recentProjects, projectEl, value => value);
+    renderRecentChoices(recentTagsEl, recentTags, tagsEl, value => `#${value.replace(/^#/, "")}`);
+
     // Focus on note input for quick workflow
     noteEl.focus();
 
     // Event: Save
-    const doSave = async () => {
+    const doSave = async (skipDuplicateCheck = false) => {
       const quote = quoteEl.value.trim();
       if (!quote) {
         alert("인용 문장이 비어있습니다.");
@@ -190,7 +244,7 @@
 
       const citationData = {
         id: `cite_${Date.now()}`,
-        quote: quote,
+        quote,
         note: noteEl.value.trim(),
         project: projectEl.value.trim() || "일반",
         tags: rawTags,
@@ -205,18 +259,51 @@
       try {
         const response = await chrome.runtime.sendMessage({
           action: "SAVE_CITATION",
-          data: citationData
+          data: citationData,
+          skipDuplicateCheck
         });
 
-        closeModal();
+        if (response && response.duplicate) {
+          const existing = response.existing || {};
+          saveBtn.disabled = false;
+          saveBtn.textContent = "그래도 저장";
+          const shouldSave = confirm(
+            `이미 같은 페이지의 동일한 인용이 저장되어 있습니다.\\n\\n"${existing.quote || quote}"\\n\\n기존 기록: ${existing.datetime || "알 수 없음"}\\n\\n그래도 새 기록으로 저장하시겠습니까?`
+          );
+          if (shouldSave) {
+            await doSave(true);
+          } else {
+            saveBtn.textContent = "인용 저장";
+          }
+          return;
+        }
+
         if (response && response.success) {
-          await chrome.storage.local.set({
-            lastProject: projectEl.value.trim(),
-            lastTags: tagsEl.value.trim()
-          });
-          showToast(`인용이 저장되었습니다! 📁 ${response.filename}`);
+          closeModal();
+          showToast(
+            `인용이 저장되었습니다! 📁 ${response.filename}`,
+            "실행 취소",
+            async () => {
+              try {
+                const undoResponse = await chrome.runtime.sendMessage({
+                  action: "UNDO_CITATION",
+                  id: response.citationId
+                });
+                if (undoResponse && undoResponse.success) {
+                  showToast("방금 저장한 인용을 취소했습니다.");
+                } else {
+                  showToast("실행 취소에 실패했습니다.");
+                }
+              } catch (err) {
+                console.error("Undo error:", err);
+                showToast("실행 취소에 실패했습니다.");
+              }
+            }
+          );
         } else {
-          showToast(`저장 완료 (히스토리 기록됨)`);
+          saveBtn.disabled = false;
+          saveBtn.textContent = "인용 저장";
+          showToast(response?.error || "저장에 실패했습니다. 다시 시도하세요.");
         }
       } catch (err) {
         console.error("Save error:", err);
