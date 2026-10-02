@@ -49,6 +49,16 @@
         </div>
       </div>
 
+      <div class="sidebar-section stats-section">
+        <div class="section-heading">라이브러리 통계</div>
+        <div class="stats-grid">
+          <div class="stat-card"><strong id="stat-total">0</strong><span>인용</span></div>
+          <div class="stat-card"><strong id="stat-projects">0</strong><span>프로젝트</span></div>
+          <div class="stat-card"><strong id="stat-sources">0</strong><span>출처</span></div>
+        </div>
+        <div class="stats-list" id="stats-top-sources"></div>
+      </div>
+
       <div class="sidebar-footer">
         <div class="storage-info">
           <span>📁 저장 폴더: <b id="sidebar-save-dir">cite-log</b></span>
@@ -200,6 +210,28 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <div id="edit-modal" class="edit-modal" hidden>
+    <div class="edit-backdrop" data-close-edit></div>
+    <form class="edit-dialog" id="edit-form">
+      <div class="edit-header">
+        <h2>인용 편집</h2>
+        <button type="button" class="icon-btn" data-close-edit aria-label="닫기">✕</button>
+      </div>
+      <div class="edit-body">
+        <label>인용 문장<textarea id="edit-quote" class="form-input edit-textarea" required></textarea></label>
+        <label>标题 / 페이지 제목<input id="edit-title" class="form-input"></label>
+        <label>프로젝트<input id="edit-project" class="form-input" placeholder="예: 학위논문"></label>
+        <label>태그<input id="edit-tags" class="form-input" placeholder="쉼표로 구분"></label>
+        <label>메모<textarea id="edit-note" class="form-input edit-textarea"></textarea></label>
+        <div class="edit-metadata" id="edit-metadata"></div>
+      </div>
+      <div class="edit-footer">
+        <button type="button" class="btn btn-outline" data-close-edit>취소</button>
+        <button type="submit" class="btn btn-primary">변경 저장</button>
+      </div>
+    </form>
   </div>
 
   <div id="toast" class="dashboard-toast"></div>
