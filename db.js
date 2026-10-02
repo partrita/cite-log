@@ -1,8 +1,21 @@
 // cite-log - High Performance IndexedDB Layer
 
 const CITE_DB_NAME = "CiteLogDB";
-const CITE_DB_VERSION = 1;
+const CITE_DB_VERSION = 2;
 const CITE_STORE = "citations";
+
+function normalizeDuplicateValue(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getCitationFingerprint(item) {
+  const quote = normalizeDuplicateValue(item.quote);
+  const url = normalizeDuplicateValue(item.url).replace(/\/$/, "");
+  return `${url}::${quote}`;
+}
 
 let _dbConnection = null;
 
@@ -19,6 +32,23 @@ function getDB() {
         store.createIndex("timestamp", "timestamp", { unique: false });
         store.createIndex("project", "project", { unique: false });
         store.createIndex("dateOnly", "dateOnly", { unique: false });
+        store.createIndex("fingerprint", "fingerprint", { unique: false });
+      } else if (e.oldVersion < 2) {
+        const store = e.target.transaction.objectStore(CITE_STORE);
+        if (!store.indexNames.contains("fingerprint")) {
+          store.createIndex("fingerprint", "fingerprint", { unique: false });
+        }
+        const cursorRequest = store.openCursor();
+        cursorRequest.onsuccess = (event) => {
+          const cursor = event.target.result;
+          if (!cursor) return;
+          const item = cursor.value;
+          if (!item.fingerprint) {
+            item.fingerprint = getCitationFingerprint(item);
+            cursor.update(item);
+          }
+          cursor.continue();
+        };
       }
     };
 
@@ -39,6 +69,7 @@ async function dbSaveCitation(item) {
     const d = item.datetime ? item.datetime.split(" ")[0] : new Date().toISOString().slice(0, 10);
     item.dateOnly = d;
   }
+  item.fingerprint = getCitationFingerprint(item);
   return new Promise((resolve, reject) => {
     const tx = db.transaction(CITE_STORE, "readwrite");
     const store = tx.objectStore(CITE_STORE);
@@ -68,6 +99,20 @@ async function dbGetAllCitations() {
       }
     };
 
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+// Find an existing citation with the same normalized URL and quote.
+async function dbFindDuplicateCitation(item) {
+  const db = await getDB();
+  const fingerprint = getCitationFingerprint(item);
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(CITE_STORE, "readonly");
+    const store = tx.objectStore(CITE_STORE);
+    const index = store.index("fingerprint");
+    const req = index.get(fingerprint);
+    req.onsuccess = () => resolve(req.result || null);
     req.onerror = (e) => reject(e.target.error);
   });
 }
@@ -131,6 +176,7 @@ async function dbBulkInsert(items) {
       if (!item.dateOnly) {
         item.dateOnly = item.datetime ? item.datetime.split(" ")[0] : new Date().toISOString().slice(0, 10);
       }
+      item.fingerprint = getCitationFingerprint(item);
       store.put(item);
     }
     tx.oncomplete = () => resolve(true);
