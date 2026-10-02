@@ -287,7 +287,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           "autoDownload",
           "storageMode",
           "lastProject",
-          "lastTags"
+          "lastTags",
+          "recentProjects",
+          "recentTags"
         ]);
         sendResponse({ success: true, settings });
       } else if (message.action === "OPEN_DASHBOARD") {
