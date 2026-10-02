@@ -88,10 +88,16 @@ chrome.commands.onCommand.addListener(async (command) => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.id || !/^https?:/i.test(tab.url || "")) return;
 
+    const selectionResult = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => window.getSelection ? window.getSelection().toString() : ""
+    });
+    const selectionText = selectionResult?.[0]?.result || "";
+
     const payload = {
       action: "OPEN_CITE_MODAL",
       data: {
-        selectionText: "",
+        selectionText,
         pageUrl: tab.url || "",
         pageTitle: tab.title || ""
       }
