@@ -27,16 +27,59 @@
       'meta[name="application-name"]'
     ]) || window.location.hostname;
 
-    return { author, siteName };
-  }
+    const doi = normalizeDoi(getMeta([
+      'meta[name="citation_doi"]',
+      'meta[name="dc.identifier"]',
+      'meta[name="DC.Identifier"]',
+      'meta[name="prism.doi"]',
+      'meta[property="citation_doi"]'
+    ]) || extractDoiFromUrl(window.location.href));
 
+    const journal = getMeta([
+      'meta[name="citation_journal_title"]',
+      'meta[name="citation_journal"]',
+      'meta[name="prism.publicationname"]'
+    ]);
+
+    const publishedAt = getMeta([
+      'meta[name="citation_publication_date"]',
+      'meta[name="citation_date"]',
+      'meta[name="dc.date"]',
+      'meta[name="prism.publicationdate"]'
+    ]);
+
+    const metadataTitle = getMeta([
+      'meta[name="citation_title"]',
+      'meta[name="dc.title"]',
+      'meta[property="og:title"]'
+    ]);
+
+    const metadataAuthor = getMeta([
+      'meta[name="citation_author"]',
+      'meta[name="dc.creator"]'
+    ]);
+
+    return {
+      author: author || metadataAuthor,
+      siteName,
+      doi,
+      journal,
+      publishedAt,
+      metadataTitle
+    };
+  }
   function extractDoiFromUrl(url) {
-    const match = String(url || '').match(/(?:doi\\.org\\/|doi:\\s*)(10\\.\\d{4,9}\\/[^\\s?#]+)/i);
-    return match ? match[1].replace(/[.,;)]$/, '') : '';
+    const match = String(url || "").match(/(?:doi\.org\/|doi:\s*)(10\.\d{4,9}\/[^\s?#]+)/i);
+    return match ? match[1].replace(/[.,;)]$/, "") : "";
   }
 
   function normalizeDoi(value) {
-    return String(value || '').trim().replace(/^https?:\\/\\/(?:dx\\.)?doi\\.org\\//i, '').replace(/^doi:\\s*/i, '').replace(/[<>\\s]+$/g, '').replace(/[.,;)]$/, '');
+    return String(value || "")
+      .trim()
+      .replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "")
+      .replace(/^doi:\s*/i, "")
+      .replace(/[<>\s]+$/g, "")
+      .replace(/[.,;)]$/, "");
   }
 
   // Format date helper
