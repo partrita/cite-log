@@ -23,8 +23,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("total-badge").textContent = `${totalCount}개`;
   document.getElementById("stat-citations").textContent = totalCount;
 
-  const projectsSet = new Set(citations.map(c => c.project || "일반"));
-  document.getElementById("stat-projects").textContent = projectsSet.size;
+  // The popup only renders the five most recent citations, so counting projects
+  // from that subset understates the real project count. Use the full IndexedDB
+  // collection for the statistic while keeping the recent list lightweight.
+  let projectCount = new Set(citations.map(c => c.project || "일반")).size;
+  try {
+    const allCitations = await dbGetAllCitations();
+    projectCount = new Set(allCitations.map(c => c.project || "일반")).size;
+  } catch (e) {
+    console.warn("Could not calculate project count:", e);
+  }
+  document.getElementById("stat-projects").textContent = projectCount;
 
   // Render recent items
   const listEl = document.getElementById("recent-list");

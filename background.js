@@ -150,6 +150,22 @@ function sanitizeFilename(name) {
     .substring(0, 50);
 }
 
+async function refreshCitationCache() {
+  const totalCount = await dbGetCount();
+  const recentItems = await dbGetAllCitations();
+  await chrome.storage.local.set({
+    totalCount,
+    recentCitations: recentItems.slice(0, 5)
+  });
+  await updateBadgeCount();
+}
+
+function mergeRecentValue(values, value, limit = 8) {
+  const clean = String(value || "").trim();
+  if (!clean || clean === "일반") return values;
+  return [clean, ...values.filter(item => item !== clean)].slice(0, limit);
+}
+
 // 4. Message Passing Dispatcher
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
@@ -165,11 +181,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           "saveDirectory",
           "fileFormat",
           "autoDownload",
-          "storageMode"
+          "storageMode",
+          "lastProject",
+          "lastTags",
+          "recentProjects",
+          "recentTags"
         ]);
 
         const ext = fileFormat === "json" ? "json" : (fileFormat === "txt" ? "txt" : "md");
         const cleanDir = (saveDirectory || "cite-log").replace(/\/+$/, "");
+
+        // Prevent accidental duplicate captures before writing to IndexedDB.
+        if (!message.skipDuplicateCheck) {
+          const duplicate = await dbFindDuplicateCitation(item);
+          if (duplicate) {
+            sendResponse({
+              success: false,
+              duplicate: true,
+              existing: {
+                id: duplicate.id,
+                title: duplicate.title,
+                datetime: duplicate.datetime,
+                quote: duplicate.quote
+              }
+            });
+            return;
+          }
+        }
 
         // 1. Save to high-performance IndexedDB
         await dbSaveCitation(item);
@@ -215,23 +253,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         item.filename = filename;
         item.downloaded = autoDownload;
 
-        // 3. Update cached stats for instant popup display
-        const totalCount = await dbGetCount();
-        const recentItems = await dbGetAllCitations();
+        // 3. Persist recent classification choices and refresh popup cache.
+        const storedRecent = await chrome.storage.local.get([
+          "recentProjects",
+          "recentTags"
+        ]);
+        const recentProjects = mergeRecentValue(
+          storedRecent.recentProjects || [],
+          item.project
+        );
+        const recentTags = (item.tags || []).reduce(
+          (values, tag) => mergeRecentValue(values, tag),
+          storedRecent.recentTags || []
+        );
+
         await chrome.storage.local.set({
-          totalCount: totalCount,
-          recentCitations: recentItems.slice(0, 5)
+          lastProject: item.project === "일반" ? "" : item.project,
+          lastTags: (item.tags || []).join(", "),
+          recentProjects,
+          recentTags
         });
+        await refreshCitationCache();
 
-        await updateBadgeCount();
-
-        sendResponse({ success: true, filename });
+        sendResponse({ success: true, filename, citationId: item.id });
+      } else if (message.action === "UNDO_CITATION") {
+        await dbDeleteCitation(message.id);
+        await refreshCitationCache();
+        sendResponse({ success: true });
       } else if (message.action === "GET_SETTINGS") {
         const settings = await chrome.storage.local.get([
           "saveDirectory",
           "fileFormat",
           "autoDownload",
-          "storageMode"
+          "storageMode",
+          "lastProject",
+          "lastTags",
+          "recentProjects",
+          "recentTags"
         ]);
         sendResponse({ success: true, settings });
       } else if (message.action === "OPEN_DASHBOARD") {
