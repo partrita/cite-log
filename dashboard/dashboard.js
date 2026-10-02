@@ -45,6 +45,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   const sidebarSaveDir = document.getElementById("sidebar-save-dir");
   const sidebarProjects = document.getElementById("sidebar-projects");
   const sidebarTags = document.getElementById("sidebar-tags");
+  const statTotal = document.getElementById("stat-total");
+  const statProjects = document.getElementById("stat-projects");
+  const statSources = document.getElementById("stat-sources");
+  const statsTopSources = document.getElementById("stats-top-sources");
+
+  const editModal = document.getElementById("edit-modal");
+  const editForm = document.getElementById("edit-form");
+  const editQuote = document.getElementById("edit-quote");
+  const editTitle = document.getElementById("edit-title");
+  const editProject = document.getElementById("edit-project");
+  const editTags = document.getElementById("edit-tags");
+  const editNote = document.getElementById("edit-note");
+  const editMetadata = document.getElementById("edit-metadata");
+  let editingCitationId = null;
 
   const btnSelectAll = document.getElementById("btn-select-all");
   const btnOpenCollageTab = document.getElementById("btn-open-collage-tab");
@@ -166,6 +180,36 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     sidebarTotalCount.textContent = allCitations.length;
     renderSidebarFilters();
+    renderStats();
+  }
+
+  function renderStats() {
+    const projectCounts = new Map();
+    const sourceCounts = new Map();
+
+    allCitations.forEach(item => {
+      const project = item.project || "일반";
+      const source = item.domain || (() => {
+        try { return new URL(item.url).hostname; } catch { return "알 수 없음"; }
+      })();
+      projectCounts.set(project, (projectCounts.get(project) || 0) + 1);
+      sourceCounts.set(source, (sourceCounts.get(source) || 0) + 1);
+    });
+
+    statTotal.textContent = allCitations.length;
+    statProjects.textContent = projectCounts.size;
+    statSources.textContent = sourceCounts.size;
+
+    statsTopSources.innerHTML = "";
+    Array.from(sourceCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .forEach(([source, count]) => {
+        const row = document.createElement("div");
+        row.className = "stats-list-item";
+        row.innerHTML = "<span>🌐 " + escapeHtml(source) + "</span><b>" + count + "</b>";
+        statsTopSources.appendChild(row);
+      });
   }
 
   // 4. Render Sidebar Filters
@@ -228,8 +272,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         const matchNote = (item.note || "").toLowerCase().includes(q);
         const matchTitle = (item.title || "").toLowerCase().includes(q);
         const matchUrl = (item.url || "").toLowerCase().includes(q);
+        const matchDoi = (item.doi || "").toLowerCase().includes(q);
         const matchTags = (item.tags || []).some(t => t.toLowerCase().includes(q));
-        if (!matchQuote && !matchNote && !matchTitle && !matchUrl && !matchTags) {
+        if (!matchQuote && !matchNote && !matchTitle && !matchUrl && !matchDoi && !matchTags) {
           return false;
         }
       }
@@ -343,6 +388,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         </a>
         <div class="card-actions">
           <button class="icon-btn btn-card-copy" title="마크다운 인용 복사">📋</button>
+          <button class="icon-btn btn-card-edit" title="인용 편집 / 재분류">✏️</button>
           <button class="icon-btn btn-card-download" title="파일 다시 다운로드">📥</button>
           <button class="icon-btn icon-btn-danger btn-card-delete" title="삭제">🗑️</button>
         </div>
@@ -366,6 +412,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       const mdCitation = `> ${item.quote}\n\n— [${item.title}](${item.url}) (${item.datetime})`;
       await navigator.clipboard.writeText(mdCitation);
       showToast("마크다운 인용이 복사되었습니다.");
+    });
+
+    card.querySelector(".btn-card-edit").addEventListener("click", (e) => {
+      e.stopPropagation();
+      openEditModal(item);
     });
 
     card.querySelector(".btn-card-download").addEventListener("click", async (e) => {
@@ -394,6 +445,79 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     return card;
   }
+
+    function openEditModal(item) {
+    editingCitationId = item.id;
+    editQuote.value = item.quote || "";
+    editTitle.value = item.title || "";
+    editProject.value = item.project === "일반" ? "" : (item.project || "");
+    editTags.value = (item.tags || []).map(tag => tag.replace(/^#/, "")).join(", ");
+    editNote.value = item.note || "";
+
+    const source = item.domain || item.url || "알 수 없음";
+    const doiText = item.doi ? " · DOI: " + item.doi : "";
+    editMetadata.textContent = "출처: " + source + doiText;
+    editModal.hidden = false;
+    editQuote.focus();
+  }
+
+  function closeEditModal() {
+    editingCitationId = null;
+    editModal.hidden = true;
+  }
+
+  editModal.querySelectorAll("[data-close-edit]").forEach(el => {
+    el.addEventListener("click", closeEditModal);
+  });
+
+  editForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!editingCitationId) return;
+
+    const item = allCitations.find(c => c.id === editingCitationId);
+    if (!item) return;
+
+    const project = editProject.value.trim() || "일반";
+    const tags = editTags.value.split(/[,#\s]+/).filter(Boolean);
+
+    const updated = {
+      ...item,
+      quote: editQuote.value.trim(),
+      title: editTitle.value.trim() || "제목 없음",
+      project,
+      tags,
+      note: editNote.value.trim(),
+      updatedAt: Date.now()
+    };
+
+    if (!updated.quote) {
+      alert("인용 문장이 비어있습니다.");
+      editQuote.focus();
+      return;
+    }
+
+    try {
+      await dbSaveCitation(updated);
+      allCitations = await dbGetAllCitations();
+      await chrome.storage.local.set({
+        totalCount: allCitations.length,
+        recentCitations: allCitations.slice(0, 5)
+      });
+      closeEditModal();
+      buildIndexes();
+      applyFilterAndResetPagination();
+      showToast("인용이 수정되었습니다. 프로젝트와 태그도 즉시 재분류되었습니다.");
+    } catch (err) {
+      console.error("Citation update error:", err);
+      alert("인용 수정에 실패했습니다: " + err.message);
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !editModal.hidden) {
+      closeEditModal();
+    }
+  });
 
   // Infinite Scroll Observer
   function setupInfiniteScroll() {
