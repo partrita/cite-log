@@ -181,6 +181,22 @@
             <input type="text" class="cite-log-input" id="cite-log-pagetitle" />
           </div>
 
+          <div class="cite-log-row">
+            <div class="cite-log-field">
+              <label class="cite-log-label">DOI</label>
+              <input type="text" class="cite-log-input" id="cite-log-doi" placeholder="10.xxxx/..." />
+            </div>
+            <div class="cite-log-field">
+              <label class="cite-log-label">저널</label>
+              <input type="text" class="cite-log-input" id="cite-log-journal" placeholder="Journal / Conference" />
+            </div>
+          </div>
+
+          <div class="cite-log-field">
+            <label class="cite-log-label">출판일</label>
+            <input type="text" class="cite-log-input" id="cite-log-published" placeholder="YYYY-MM-DD" />
+          </div>
+
           <div class="cite-log-meta-bar">
             <div class="cite-log-meta-item">🌐 <a href="${pageUrl}" target="_blank" title="${pageUrl}">${siteName}</a></div>
             <div class="cite-log-meta-item">🕒 <span>${formattedDate}</span></div>
@@ -206,6 +222,9 @@
     const titleEl = document.getElementById("cite-log-pagetitle");
     const projectEl = document.getElementById("cite-log-project");
     const tagsEl = document.getElementById("cite-log-tags");
+    const doiEl = document.getElementById("cite-log-doi");
+    const journalEl = document.getElementById("cite-log-journal");
+    const publishedEl = document.getElementById("cite-log-published");
     const recentProjectsEl = document.getElementById("cite-log-recent-projects");
     const recentTagsEl = document.getElementById("cite-log-recent-tags");
 
@@ -213,6 +232,9 @@
     titleEl.value = pageTitle;
     projectEl.value = lastProject;
     tagsEl.value = lastTags;
+    doiEl.value = doi || "";
+    journalEl.value = journal || "";
+    publishedEl.value = publishedAt || "";
 
     function renderRecentChoices(container, values, input, formatter) {
       container.innerHTML = "";
