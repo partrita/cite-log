@@ -110,8 +110,16 @@
         fileFormat = res.settings.fileFormat || "md";
         lastProject = res.settings.lastProject || "";
         lastTags = res.settings.lastTags || "";
-        recentProjects = Array.isArray(res.settings.recentProjects) ? res.settings.recentProjects : [];
-        recentTags = Array.isArray(res.settings.recentTags) ? res.settings.recentTags : [];
+        recentProjects = Array.isArray(res.settings.recentProjects) ? [...res.settings.recentProjects] : [];
+        recentTags = Array.isArray(res.settings.recentTags) ? [...res.settings.recentTags] : [];
+        if (lastProject && !recentProjects.includes(lastProject)) {
+          recentProjects.unshift(lastProject);
+        }
+        if (lastTags) {
+          lastTags.split(/[,#\s]+/).filter(Boolean).reverse().forEach((tag) => {
+            if (!recentTags.includes(tag)) recentTags.unshift(tag);
+          });
+        }
       }
     } catch (e) {
       console.warn("Could not retrieve settings:", e);
